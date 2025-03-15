@@ -1,0 +1,47 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env
+
+# Logs and databases
+logs/
+*.log
+db.sqlite3
+face_db.index
+
+# FastAPI specific
+*.db
+*.sqlite
+
+# Ignore compiled Python files
+*.so
+
+# FAISS index files
+face_db.index
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Node.js dependencies (Frontend)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build files
+build/
+dist/
+*.egg-info/
+
+# Docker
+docker-compose.override.yml
+
+# VS Code settings
+.vscode/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
