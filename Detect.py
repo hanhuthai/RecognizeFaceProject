@@ -19,7 +19,8 @@ def is_face_registered(embedding, threshold=1):
 
 
 cap = cv2.VideoCapture(0)
-
+if not cap.isOpened():
+    print("Không thể mở camera!")
 while True:
     ret, frame = cap.read()
     if not ret:
