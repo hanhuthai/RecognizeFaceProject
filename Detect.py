@@ -3,39 +3,38 @@ import numpy as np
 import faiss
 from insightface.app import FaceAnalysis
 
-# Load the saved FAISS index
+# Load FAISS index
 index = faiss.read_index("face_db.index")
 
-# Initialize InsightFace with GPU
+# Khởi tạo InsightFace
 app = FaceAnalysis(providers=['CUDAExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(640, 640))
 
-
-# Function to check if the detected face matches any saved embeddings
-# 0.6-1  càng nhỏ càng nghiêm ngặt, há miệng sẽ ko bắt được
+# Kiểm tra khuôn mặt đã đăng ký
 def is_face_registered(embedding, threshold=1):
     D, I = index.search(np.array([embedding], dtype=np.float32), 1)
     return D[0][0] < threshold
 
+# Mở video thay vì camera
+video_path = "C:\\Users\\lehuuchinh\\Downloads\\6414966157105.mp4"  # Đổi đường dẫn file video tại đây
+cap = cv2.VideoCapture(video_path)
 
-cap = cv2.VideoCapture(0)
 if not cap.isOpened():
-    print("Không thể mở camera!")
+    print("Không thể mở video!")
+    exit()
+
 while True:
     ret, frame = cap.read()
     if not ret:
-        break
+        break  # Thoát nếu hết video
 
     faces = app.get(frame)
 
     for face in faces:
         embedding = face.normed_embedding  # Vector 512D
-        if is_face_registered(embedding):
-            label = "Registered Face"
-        else:
-            label = "Unknown Face"
+        label = "Registered Face" if is_face_registered(embedding) else "Unknown Face"
 
-        # Draw bounding box and label
+        # Vẽ khung + hiển thị nhãn
         x, y, w, h = face.bbox.astype(int)
         cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
         cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
@@ -43,7 +42,7 @@ while True:
     cv2.imshow("Face Detection", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        break  # Nhấn 'q' để thoát
 
 cap.release()
 cv2.destroyAllWindows()
