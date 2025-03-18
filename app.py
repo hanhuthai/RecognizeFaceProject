@@ -12,6 +12,7 @@ from starlette.middleware.cors import CORSMiddleware
 from database import get_db
 from models.face_model import FaceIndex
 from routers.face_controller import router as face_router
+from routers.face_detect import router as detect_router
 
 from database import init_db
 
@@ -78,7 +79,7 @@ app.add_event_handler("startup", startup_event)
 
 
 app.include_router(face_router)
-
+app.include_router(detect_router)
 @app.get("/face-embeddings")
 def get_face_embeddings():
     return {"face_embeddings": {key: emb.tolist() for key, emb in face_embeddings.items()}}

@@ -24,3 +24,4 @@ async def register_face(
 
     result = await capture_face(user_id, name, age, address, phonenumber, db)  # ✅ Thêm await
     return result
+
