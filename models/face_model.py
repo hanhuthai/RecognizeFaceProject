@@ -11,4 +11,4 @@ class FaceIndex(Base):
     address = Column(Text, nullable=False)
     phonenumber = Column(String(20), nullable=False)
     angle = Column(Enum("front", "left", "right", "up", "down"), nullable=False)
-    embedding = Column(LargeBinary, nullable=False)  # Lưu trực tiếp embedding
+    embedding = Column(LargeBinary(2048), nullable=False)  # Lưu trực tiếp embedding

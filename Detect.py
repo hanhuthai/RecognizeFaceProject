@@ -9,25 +9,27 @@ app = FaceAnalysis(providers=['CUDAExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(640, 640))
 
 def is_face_registered(embedding, threshold=1):
+    """ Kiểm tra xem khuôn mặt có trong database không """
     D, I = index.search(np.array([embedding], dtype=np.float32), 1)
     return D[0][0] < threshold
 
-video_path = "C:\\Users\\lehuuchinh\\Downloads\\6414966157105.mp4"
-cap = cv2.VideoCapture(video_path)
+cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
-    print("Không thể mở video!")
+    print("❌ Không thể mở webcam!")
     exit()
 
 while True:
     ret, frame = cap.read()
     if not ret:
+        print("❌ Không thể đọc khung hình từ webcam!")
         break
+
     faces = app.get(frame)
 
     for face in faces:
         embedding = face.normed_embedding
-        label = "Registered Face" if is_face_registered(embedding) else "Unknown Face"
+        label = "lehuuchinh" if is_face_registered(embedding) else "❌ Unknown Face"
 
         x, y, w, h = face.bbox.astype(int)
         cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)

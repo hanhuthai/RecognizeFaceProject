@@ -21,11 +21,11 @@ def display_registered_angles(frame, face_angles):
     text = "Registered angles: " + ", ".join([angle for angle, registered in face_angles.items() if registered])
     cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-cap = cv2.VideoCapture("C:\\Users\\lehuuchinh\\Downloads\\6414966157105.mp4")
+cap = cv2.VideoCapture(0)
 
 while not all(face_angles.values()):
     ret, frame = cap.read()
-    if not ret or cv2.waitKey(30) & 0xFF == ord('q'):
+    if not ret or cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
     faces = app.get(frame)
@@ -68,10 +68,9 @@ while not all(face_angles.values()):
 cap.release()
 cv2.destroyAllWindows()
 
-
+# Lưu embeddings vào FAISS
 for key, emb in face_embeddings.items():
     index.add(np.array([emb], dtype=np.float32))
 
 faiss.write_index(index, "face_db.index")
 print("✅ Saved 5 face angles to FAISS!")
-
