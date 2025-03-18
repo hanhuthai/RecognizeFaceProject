@@ -4,8 +4,12 @@ import faiss
 import uvicorn
 import tempfile
 from fastapi import FastAPI, UploadFile, File
+from fastapi.params import Depends
 from insightface.app import FaceAnalysis
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.cors import CORSMiddleware
+
+from database import get_db
 
 app = FastAPI()
 origins = [
@@ -166,6 +170,9 @@ async def detect_faces(file: UploadFile = File(...)):
         "detected_faces": detected_faces
     }
 
-
+@app.get("/test-db")
+async def test_db(session: AsyncSession = Depends(get_db)):
+    return {"message": "✅ Database connection is working!"}
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
