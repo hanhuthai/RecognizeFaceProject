@@ -1,28 +1,19 @@
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import asyncio
 
-# Thay đổi thông tin kết nối MySQL
-DATABASE_URL = "mysql+asyncmy://user:password@localhost:3307/ai_portal"
+DATABASE_URL = "mysql+aiomysql://root:1234@localhost:3307/ai_portal"
 
-# Tạo engine kết nối
 engine = create_async_engine(DATABASE_URL, echo=True)
 
-# Tạo session factory
-async_session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-
-# Base Model cho ORM
+AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
-# Dependency để lấy session
-async def get_db():
-    async with async_session_factory() as session:
-        yield session
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-async def check_database_connection():
-    try:
-        async with async_session_factory() as session:
-            result = await session.execute(text("SELECT 1"))
-            print("✅ Kết nối MySQL thành công:", result.scalar())
-    except Exception as e:
-        print("❌ Lỗi kết nối MySQL:", str(e))
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
