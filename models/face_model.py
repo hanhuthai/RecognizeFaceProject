@@ -1,11 +1,12 @@
+import uuid
 from sqlalchemy import Column, Integer, String, Enum, Text, LargeBinary
 from database import Base
 
 class FaceIndex(Base):
     __tablename__ = "face_index"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)
+    id = Column(String(255), primary_key=True,unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255), nullable=False, default=lambda: str(uuid.uuid4()))  # Cho phép trùng lặp
     name = Column(String(255), nullable=False)
     age = Column(Integer, nullable=False)
     address = Column(Text, nullable=False)
