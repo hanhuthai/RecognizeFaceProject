@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from RegisterFace import register_face  # Import từ file registerFace.py
 from video_stream import generate_frames  # Import từ file video_stream.py
 from fastapi import BackgroundTasks
-from video_stream import set_register_flag
+import utils.utils as utils
 
 app = FastAPI()
 
@@ -23,7 +23,7 @@ def video_feed():
 async def api_register_face():
     """ Gọi register_face() và trả về kết quả cho client """
     print("Registering face...")
-    set_register_flag(True)
+    utils.set_register_flag(True)
     #embeddings = register_face()
     #return {"status": "success", "embeddings": {k: v.tolist() for k, v in embeddings.items()}}
     return "success"
