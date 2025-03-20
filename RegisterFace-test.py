@@ -10,7 +10,7 @@ app.prepare(ctx_id=0, det_size=(640, 640))
 # Initialize FAISS with 512 dimensions
 index = faiss.IndexFlatL2(512)
 
-# List of face angles to capture
+# List of face angles to captutre
 face_angles = {
     "front": False,
     "left": False,

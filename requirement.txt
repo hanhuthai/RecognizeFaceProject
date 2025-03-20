@@ -1,3 +1,5 @@
+# for register face
 pip install insightface opencv-python numpy onnxruntime-gpu
 conda install -c conda-forge faiss-gpu
-
+# for web
+pip install fastapi uvicorn websockets
