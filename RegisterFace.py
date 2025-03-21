@@ -21,17 +21,15 @@ def display_registered_angles(frame, face_angles):
     cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
 def register_faceByFrame(frame):
-    global register_flag
-    print("Registering face by frame...")
     app = FaceAnalysis(providers=['CUDAExecutionProvider'])
-    app.prepare(ctx_id=0, det_size=(640, 640))
+    app.prepare(ctx_id=0, det_size=(320, 320))
 
     faces = app.get(frame)
 
     for face in faces:
         embedding = face.normed_embedding  # Vector 512D
         yaw, pitch, roll = face.pose  # Face pose angles
-        print(f"Yaw: {yaw}, Pitch: {pitch}, Roll: {roll}")
+        #print(f"Yaw: {yaw}, Pitch: {pitch}, Roll: {roll}")
 
         # Yaw (Rotation around Y-axis - left/right)
         # Pitch (Rotation around X-axis - up/down)
@@ -60,11 +58,14 @@ def register_faceByFrame(frame):
         else:
             label = "Adjust Position"
         # Draw bounding box and label
-        x, y, w, h = face.bbox.astype(int)
-        cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
-        cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        #x, y, w, h = face.bbox.astype(int)
+        #cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
+        #cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    # Print registered angles
+    registered_angles = [angle for angle, registered in face_angles.items() if registered]
+    print("Registered angles so far:", registered_angles)
 
-    display_registered_angles(frame, face_angles)
+    #display_registered_angles(frame, face_angles)
     if all(face_angles.values()):
         print("✅ Captured all face angles!")
         utils.set_register_flag(False)

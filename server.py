@@ -2,10 +2,12 @@
 import cv2
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
-from RegisterFace import register_face  # Import từ file registerFace.py
+from RegisterFace import register_face, register_faceByFrame  # Import từ file registerFace.py
 from video_stream import generate_frames  # Import từ file video_stream.py
 from fastapi import BackgroundTasks
 import utils.utils as utils
+import RegisterFace as rgf
+import video_stream as vs
 
 app = FastAPI()
 
@@ -20,13 +22,17 @@ def video_feed():
 
 
 @app.post("/register-face")
-async def api_register_face():
-    """ Gọi register_face() và trả về kết quả cho client """
+async def api_register_face(background_tasks: BackgroundTasks):
+    """ Gọi register_face() and return to client """
     print("Registering face...")
     utils.set_register_flag(True)
-    #embeddings = register_face()
-    #return {"status": "success", "embeddings": {k: v.tolist() for k, v in embeddings.items()}}
-    return "success"
+    background_tasks.add_task(register_face_async)
+    return {"status": "processing"}
+
+def register_face_async():
+    while not all(rgf.face_angles.values()):
+        register_faceByFrame(vs.latest_frame)
+        print("Registering")  # Or save to DB
 
 # @app.post("/register-face")
 # async def api_register_face(background_tasks: BackgroundTasks):
