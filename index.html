@@ -45,6 +45,11 @@
         button:hover {
             background-color: #45a049;
         }
+        #angles {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
     </style>
     <script>
         function registerFace() {
@@ -53,6 +58,29 @@
                 .then(data => alert(data.message))
                 .catch(error => console.error('Error:', error));
         }
+
+        function updateAngles(angles) {
+            const anglesDiv = document.getElementById('angles');
+            const registeredAngles = [];
+            for (const [angle, registered] of Object.entries(angles)) {
+                if (registered) {
+                    registeredAngles.push(angle);
+                }
+            }
+            if (registeredAngles.length === 5) {
+                anglesDiv.innerHTML = "All 5 face angles have been registered.";
+            } else {
+                anglesDiv.innerHTML = `Registered Angle Face: ${registeredAngles.join(', ')}`;
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const ws = new WebSocket(`ws://${window.location.host}/ws`);
+            ws.onmessage = (event) => {
+                const angles = JSON.parse(event.data);
+                updateAngles(angles);
+            };
+        });
     </script>
 </head>
 <body>
@@ -60,6 +88,7 @@
         <h1>Welcome to Face Register</h1>
         <img src="/video_feed" width="640" height="480" />
         <button onclick="registerFace()">Register Face</button>
+        <div id="angles"></div>
     </div>
 </body>
 </html>

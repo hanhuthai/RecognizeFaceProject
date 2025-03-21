@@ -1,13 +1,12 @@
 # server.py
-import cv2
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse
 from RegisterFace import register_face, register_faceByFrame  # Import từ file registerFace.py
 from video_stream import generate_frames  # Import từ file video_stream.py
-from fastapi import BackgroundTasks
 import utils.utils as utils
 import RegisterFace as rgf
 import video_stream as vs
+import asyncio  # Import asyncio
 
 app = FastAPI()
 
@@ -33,6 +32,13 @@ def register_face_async():
     while not all(rgf.face_angles.values()):
         register_faceByFrame(vs.latest_frame)
         print("Registering")  # Or save to DB
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        await websocket.send_json(rgf.face_angles)
+        await asyncio.sleep(1)  # Adjust the frequency as needed
 
 # @app.post("/register-face")
 # async def api_register_face(background_tasks: BackgroundTasks):
