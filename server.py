@@ -7,10 +7,17 @@ import RegisterFace as rgf
 import video_stream as vs
 import asyncio  # Import asyncio
 import logging
+from pydantic import BaseModel
 
 # Set the logging level for the websockets library to WARNING
 logging.getLogger("websockets").setLevel(logging.WARNING)
 app = FastAPI()
+
+class FaceData(BaseModel):
+    name: str
+    gender: str
+    phone: str
+    email: str
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
@@ -33,6 +40,17 @@ def register_face_async():
     while not all(rgf.face_angles.values()):
         register_faceByFrame(vs.latest_frame)
         print("Registering")  # Or save to DB
+
+@app.post("/save-face")
+async def save_face(data: FaceData):
+    # Save the face data and embeddings
+    print(f"Name: {data.name}")
+    print(f"Gender: {data.gender}")
+    print(f"Phone: {data.phone}")
+    print(f"Email: {data.email}")
+    #print(f"Embeddings: {rgf.face_embeddings}")
+    # Add your save logic here (e.g., save to database)
+    return {"status": "success", "message": "Face data saved successfully"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

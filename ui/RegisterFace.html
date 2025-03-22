@@ -186,8 +186,22 @@
                 return;
             }
 
-            // Add your save logic here
-            alert("Face saved successfully!");
+
+            fetch('/save-face', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    gender: gender,
+                    phone: phone,
+                    email: email
+                })
+            })
+            .then(response => response.json())
+            .then(data => alert(data.message))
+            .catch(error => console.error('Error:', error));
         }
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -276,5 +290,3 @@
     </form>
 </body>
 </html>
-
-
