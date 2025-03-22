@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import faiss
 from insightface.app import FaceAnalysis
-import utils.utils as utils
 
 # List of face angles to captutre
 face_angles = {
@@ -20,7 +19,7 @@ def display_registered_angles(frame, face_angles):
     text = "Registered angles: " + ", ".join([angle for angle, registered in face_angles.items() if registered])
     cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-def register_faceByFrame(frame):
+def  register_faceByFrame(frame):
     app = FaceAnalysis(providers=['CUDAExecutionProvider'])
     app.prepare(ctx_id=0, det_size=(320, 320))
 
@@ -68,7 +67,6 @@ def register_faceByFrame(frame):
     #display_registered_angles(frame, face_angles)
     if all(face_angles.values()):
         print("✅ Captured all face angles!")
-        utils.set_register_flag(False)
         # Add to FAISS
         for key, emb in face_embeddings.items():
             index.add(np.array([emb], dtype=np.float32))
@@ -76,7 +74,6 @@ def register_faceByFrame(frame):
         # Save FAISS to file
         faiss.write_index(index, "face_db.index")
         print("✅ Saved 5 face angles to FAISS!")
-        print("register_faceByFrame - Register flag after processing:", utils.register_flag)
    # cv2.imshow("Face Registration", frame)
 
 

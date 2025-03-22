@@ -1,8 +1,6 @@
 # video_stream.py
 import cv2
 from RegisterFace import register_faceByFrame
-import utils.utils as utils
-
 
 cap = cv2.VideoCapture(0)
 frame_skip = 5  # Chỉ xử lý 1 frame trong mỗi 5 frame
@@ -21,10 +19,6 @@ def generate_frames():
                 continue
 
             latest_frame = frame
-            # Register face
-            # print("generate_frames-Register flag:", utils.register_flag)
-            # if utils.register_flag:
-            #     register_faceByFrame(frame)
 
             #cv2.putText(frame, "Hello World", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
