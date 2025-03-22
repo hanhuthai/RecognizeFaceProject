@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Face Register</title>
     <style>
+        /* Existing CSS */
         body {
             font-family: Arial, sans-serif;
             max-width: 900px;
@@ -22,7 +23,6 @@
             margin-bottom: 20px;
             overflow: hidden;
         }
-
 
         .target-point {
             position: absolute;
@@ -81,7 +81,7 @@
             margin-bottom: 20px;
         }
 
-        .start-button {
+        .start-button, .save-button {
             display: block;
             width: 200px;
             margin: 0 auto 30px;
@@ -94,7 +94,7 @@
             font-size: 16px;
         }
 
-        .start-button:hover {
+        .start-button:hover, .save-button:hover {
             background-color: #3367d6;
         }
 
@@ -141,39 +141,54 @@
                 .catch(error => console.error('Error:', error));
         }
 
-function updateAngles(angles) {
-    const anglesMapping = {
-        "front": 0,
-        "up": 1,
-        "down": 2,
-        "left": 3,
-        "right": 4
-    };
+        function updateAngles(angles) {
+            const anglesMapping = {
+                "front": 0,
+                "up": 1,
+                "down": 2,
+                "left": 3,
+                "right": 4
+            };
 
-    // Reset all points
-    for (let i = 0; i < 5; i++) {
-        document.getElementById(`point-${i}`).classList.remove('registered');
-    }
+            // Reset all points
+            for (let i = 0; i < 5; i++) {
+                document.getElementById(`point-${i}`).classList.remove('registered');
+            }
 
-    // Mark registered angles
-    const registeredAngles = [];
-    for (const [angle, registered] of Object.entries(angles)) {
-        if (registered) {
-            registeredAngles.push(angle);
-            const pointId = anglesMapping[angle];
-            if (pointId !== undefined) {
-                document.getElementById(`point-${pointId}`).classList.add('registered');
+            // Mark registered angles
+            const registeredAngles = [];
+            for (const [angle, registered] of Object.entries(angles)) {
+                if (registered) {
+                    registeredAngles.push(angle);
+                    const pointId = anglesMapping[angle];
+                    if (pointId !== undefined) {
+                        document.getElementById(`point-${pointId}`).classList.add('registered');
+                    }
+                }
+            }
+
+            const anglesDiv = document.getElementById('angles');
+            if (registeredAngles.length === 5) {
+                anglesDiv.innerHTML = "All 5 face angles have been registered.";
+            } else {
+                anglesDiv.innerHTML = `Registered Angle Face: ${registeredAngles.join(', ')}`;
             }
         }
-    }
 
-    const anglesDiv = document.getElementById('angles');
-    if (registeredAngles.length === 5) {
-        anglesDiv.innerHTML = "All 5 face angles have been registered.";
-    } else {
-        anglesDiv.innerHTML = `Registered Angle Face: ${registeredAngles.join(', ')}`;
-    }
-}
+        function saveFace() {
+            const name = document.querySelector('input[placeholder="Enter Name"]').value;
+            const gender = document.querySelector('select').value;
+            const phone = document.querySelector('input[placeholder="Enter phone number"]').value;
+            const email = document.querySelector('input[placeholder="Enter email"]').value;
+
+            if (!name || !gender || !phone || !email) {
+                alert("Please fill in all required fields.");
+                return;
+            }
+
+            // Add your save logic here
+            alert("Face saved successfully!");
+        }
 
         document.addEventListener("DOMContentLoaded", () => {
             const ws = new WebSocket(`ws://${window.location.host}/ws`);
@@ -207,9 +222,10 @@ function updateAngles(angles) {
         <div id="point-4" class="target-point point-4">4</div>
     </div>
 
-    <div id="connection-error" class="error-message">Cannot connect to server!</div>
+    <div id="connection-error" class="error-message">Please start to record face, input full face infor, after that click Save face to save to DB</div>
 
     <button class="start-button" onclick="registerFace()">Start</button>
+    <button class="save-button" onclick="saveFace()">Save Face</button>
 
     <div id="angles"></div>
 
@@ -260,3 +276,5 @@ function updateAngles(angles) {
     </form>
 </body>
 </html>
+
+
