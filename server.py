@@ -14,7 +14,7 @@ app = FastAPI()
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    with open("index.html", "r") as f:
+    with open("ui/RegisterFace.html", "r") as f:
         return f.read()
 
 @app.get("/video_feed")
