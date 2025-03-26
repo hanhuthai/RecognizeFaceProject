@@ -8,6 +8,7 @@ import video_stream as vs
 import asyncio  # Import asyncio
 import logging
 from pydantic import BaseModel
+from SearchFace import search_similar_faces  # Import the search function
 
 # Set the logging level for the websockets library to WARNING
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -18,6 +19,10 @@ class FaceData(BaseModel):
     gender: str
     phone: str
     email: str
+
+class SearchRequest(BaseModel):
+    image_path: str
+    k: int
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
@@ -52,9 +57,16 @@ async def save_face(data: FaceData):
     # Add your save logic here (e.g., save to database)
     return {"status": "success", "message": "Face data saved successfully"}
 
+@app.post("/search-face")
+async def api_search_face(request: SearchRequest):
+    """ Search for similar faces given an image path and number of top similar faces to return """
+    similar_faces = search_similar_faces(request.image_path, request.k)
+    return {"similar_faces": similar_faces}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     while True:
         await websocket.send_json(rgf.face_angles)
         await asyncio.sleep(1)  # Adjust the frequency as needed
+
