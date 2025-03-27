@@ -1,5 +1,6 @@
 # server.py
-from fastapi import FastAPI, WebSocket, BackgroundTasks, Depends
+import json
+from fastapi import FastAPI, WebSocket, BackgroundTasks, Depends, Response, status
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from RegisterFace import register_faceByFrame  # Import từ file registerFace.py
@@ -17,10 +18,18 @@ from models.face_groupinfo import FaceGroupInfo
 import os
 import cv2
 from RegisterFace import captured_images
+from fastapi.middleware.cors import CORSMiddleware
 # Set the logging level for the websockets library to WARNING
 logging.getLogger("websockets").setLevel(logging.WARNING)
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Cho phép tất cả nguồn gốc (thay "*" bằng domain cụ thể nếu cần)
+    allow_credentials=True,
+    allow_methods=["*"],  # Cho phép tất cả phương thức (GET, POST, OPTIONS, ...)
+    allow_headers=["*"],  # Cho phép tất cả headers
+)
+is_registering = True  
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
@@ -34,15 +43,40 @@ def video_feed():
 
 @app.post("/register-face")
 async def api_register_face(background_tasks: BackgroundTasks):
-    """ Gọi register_face() and return to client """
-    print("Registering face...")
-    background_tasks.add_task(register_face_async)
-    return {"status": "processing"}
+    global is_registering
+    if is_registering:
+        print("Registering face...")
+        background_tasks.add_task(register_face_async)
+        return {"status": "processing"}
 
-def register_face_async():
-    while not all(rgf.face_angles.values()):
-        register_faceByFrame(vs.latest_frame)
-        print("Registering")  # Or save to DB
+async def register_face_async():
+    global is_registering
+    # Initialize FaceAnalysis once outside the loop
+    app = rgf.FaceAnalysis(providers=['CUDAExecutionProvider'])
+    app.prepare(ctx_id=0, det_size=(320, 320))
+
+    while True:
+        if not is_registering:
+            print("Stopping registration process...")
+            break  # Exit the loop immediately when is_registering is False
+
+        # Check if latest_frame is None
+        if vs.latest_frame is not None:
+            await register_faceByFrame(vs.latest_frame, is_registering, app)
+        else:
+            print("Warning: No frame available")
+        await asyncio.sleep(0.1)
+    print("Registration process stopped.")
+
+def reset_is_registering():
+    global is_registering
+    is_registering = True  # Đặt lại sau khi API chạy xong        
+@app.post("/stop-register-face")
+async def api_stop_register_face(background_tasks: BackgroundTasks):
+    global is_registering
+    is_registering = False  # Tạm thời đặt thành False
+    background_tasks.add_task(reset_is_registering)  # Đặt lại True sau khi API kết thúc
+    return {"status": "stopped"}
 
 @app.post("/save-face")
 async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
@@ -83,33 +117,48 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     if ref_value == 1:
-        save_dir = f"faces/{face_info.groupName}/{new_id}/{face_info.lastName}{face_info.firstName}"
-        os.makedirs(save_dir, exist_ok=True)
+        if len(captured_images) < 5:
+            return Response(
+                content=json.dumps({"status": "error", "message": "Not enough face angles captured. Please complete all 5 angles before saving."}),
+                status_code=status.HTTP_400_BAD_REQUEST,
+                media_type="application/json"
+            )
+        else:
+            save_dir = f"faces/{face_info.groupName}/{new_id}/{face_info.lastName}{face_info.firstName}"
+            os.makedirs(save_dir, exist_ok=True)
 
         for angle, img in captured_images.items():
             img_path = os.path.join(save_dir, f"{angle}.jpg")
             cv2.imwrite(img_path, img)
             print(f"✅ Saved image: {img_path}")
 
-        return {
-            "status": "success",
-            "message": "Face data and images saved successfully",
-            "data": {
-                "faceInfoId": new_id,
-                "empId": face_info.empId,
-                "firstName": face_info.firstName,
-                "lastName": face_info.lastName,
-                "groupId": group_id,
-                "groupName": face_info.groupName,
-                "dob": face_info.dob,
-                "gender": face_info.gender,
-                "phone": face_info.phone,
-                "email": face_info.email,
-                "avatar": face_info.avatar
-            }
-        }
+        return Response(
+            content=json.dumps({
+                "status": "success",
+                "message": "Face data and images saved successfully",
+                "data": {
+                    "faceInfoId": new_id,
+                    "empId": face_info.empId,
+                    "firstName": face_info.firstName,
+                    "lastName": face_info.lastName,
+                    "groupId": group_id,
+                    "groupName": face_info.groupName,
+                    "dob": face_info.dob,
+                    "gender": face_info.gender,
+                    "phone": face_info.phone,
+                    "email": face_info.email,
+                    "avatar": face_info.avatar
+                }
+            }),
+            status_code=status.HTTP_201_CREATED,
+            media_type="application/json"
+        )
     else:
-        return {"status": "error", "message": "Unknown error"}
+        return Response(
+            content.json.dumps({"status": "error", "message": "Failed to save face data"}),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json"
+        )
 
 
     
@@ -119,4 +168,4 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     while True:
         await websocket.send_json(rgf.face_angles)
-        await asyncio.sleep(1)  
+        await asyncio.sleep(1)
