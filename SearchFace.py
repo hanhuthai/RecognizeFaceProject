@@ -4,6 +4,7 @@ import onnxruntime as ort
 import faiss
 from numpy.linalg import norm
 import mysql.connector
+from insightface.app import FaceAnalysis  # Add this import
 
 def cosine_similarity(emb1, emb2):
     emb1 = emb1.flatten()
@@ -13,8 +14,16 @@ def cosine_similarity(emb1, emb2):
 def l2_distance(emb1, emb2):
     return np.linalg.norm(emb1 - emb2)
 
+
 def load_model(model_path):
     return ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
+
+def create_transformation_matrix(src_points, dst_points):
+    if len(src_points) != 5 or len(dst_points) != 5:
+        raise ValueError("Both src_points and dst_points must contain exactly 5 points")
+    src_points = np.array(src_points, dtype=np.float32)
+    dst_points = np.array(dst_points, dtype=np.float32)
+    return cv2.estimateAffinePartial2D(src_points, dst_points)[0]
 
 def preprocess_image(img, transfer_mat=None):
     if img is None or not isinstance(img, np.ndarray) or len(img.shape) != 3 or img.shape[2] != 3:
@@ -30,6 +39,8 @@ def preprocess_image(img, transfer_mat=None):
         if transfer_mat.shape != (2, 3):
             raise ValueError("transfer_mat must be a 2x3 matrix")
         face_aligned = cv2.warpAffine(img, transfer_mat, face_size)
+        cv2.imwrite("face_aligned.jpg", face_aligned)
+        print(f"Face saved to face_aligned.jpg")
     else:
         face_aligned = img
 
@@ -62,12 +73,39 @@ def preprocess_image(img, transfer_mat=None):
 
     return cropped_blob, flipped_blob
 
+def crop_face(image):
+    app = FaceAnalysis()
+    app.prepare(ctx_id=0, det_size=(640, 640))
+    faces = app.get(image)
+    if len(faces) == 0:
+        raise ValueError("No face detected in the image")
+    face = faces[0]
+
+    bbox = face.bbox.astype(int)
+    cropped_face = image[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+    # Save the cropped face
+    cv2.imwrite("face.jpg", cropped_face)
+    print(f"Face saved to face.jpg")
+    return cropped_face, face.kps  # Return keypoints for alignment
+
 def extract_embedding(net, img, transfer_mat=None):
     if not hasattr(net, 'get_inputs') or not hasattr(net, 'run'):
         raise ValueError("Invalid model")
 
     try:
-        cropped_blob, flipped_blob = preprocess_image(img, transfer_mat)
+        cropped_face, keypoints = crop_face(img)  # Crop the face before preprocessing
+        if transfer_mat is None:
+            # Define destination points for alignment
+            dst_points = [
+                [30.2946 + 8.0, 51.6963],
+                [65.5318 + 8.0, 51.5014],
+                [48.0252 + 8.0, 71.7366],
+                [33.5493 + 8.0, 92.3655],
+                [62.7299 + 8.0, 92.2041]
+            ]
+            transfer_mat = create_transformation_matrix(keypoints, dst_points)
+        transfer_mat= None
+        cropped_blob, flipped_blob = preprocess_image(cropped_face, transfer_mat)
         input_name = net.get_inputs()[0].name
 
         # Run inference
@@ -81,38 +119,47 @@ def extract_embedding(net, img, transfer_mat=None):
         return np.zeros(512, dtype=np.float32)
 
 def get_embeddings_from_db(cursor):
-    cursor.execute("SELECT faceObjId, embedding FROM face_object")
+    cursor.execute("SELECT faceObjId, embedding, frameId FROM face_object")
     rows = cursor.fetchall()
-    frameids = []
+    faceObjIDS = []
     embeddings = []
+    frameIds = []
     for row in rows:
-        frameId, embedding_blob = row
+        faceObjId, embedding_blob, frameId = row
         #print(f"Frame ID: {frameId}, Embedding Blob Size: {len(embedding_blob)}")  # Debugging line
 
         # Decode the PNG image back to a NumPy array
-        nparr = np.frombuffer(embedding_blob, np.uint8)
-        embedding_img = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+        embedding = np.frombuffer(embedding_blob, np.float32)
 
-        if embedding_img is None:
-            print(f"Skipping frame ID {frameId} due to invalid embedding image")
-            continue
-
-        # Flatten the image and convert to float32
-        embedding = embedding_img.flatten().astype(np.float32)
-
-        frameids.append(frameId)
+        faceObjIDS.append(faceObjId)
         embeddings.append(embedding)
+        frameIds.append(frameId)
 
-    return frameids, np.array(embeddings)
+    return faceObjIDS, np.array(embeddings), frameIds
 
-def find_similar_faces_faiss(input_embedding, embeddings, top_n=5):
-    d = embeddings.shape[1]
-    index = faiss.IndexFlatL2(d)
-    index.add(embeddings)
-    D, I = index.search(np.array([input_embedding]), top_n)
-    return I[0], D[0]
+def find_similar_faces_cosine(input_embedding, embeddings, top_n=5):
+    # Normalize the embeddings to unit vectors
+    embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+    #print("Embedding:", embeddings)
+    input_embedding = input_embedding / np.linalg.norm(input_embedding)
 
-def search_similar_faces(image_path, k=5):
+    # Compute cosine similarity
+    similarities = np.dot(embeddings, input_embedding)
+
+    # Get the top N similar faces
+    top_indices = np.argsort(similarities)[-top_n:][::-1]
+    top_similarities = similarities[top_indices]
+
+    return top_indices, top_similarities
+
+def get_image_paths_from_db(cursor, frameIds):
+    format_strings = ','.join(['%s'] * len(frameIds))
+    cursor.execute(f"SELECT frameId, imgPath FROM frame_metadata WHERE frameId IN ({format_strings})", tuple(frameIds))
+    rows = cursor.fetchall()
+    frameId_to_imgPath = {row[0]: row[1] for row in rows}
+    return frameId_to_imgPath
+
+def search_similar_faces(image_path, k=3):
     cursor = conn.cursor()
     model_path = "ArcFace.onnx"
 
@@ -126,16 +173,16 @@ def search_similar_faces(image_path, k=5):
     input_embedding = input_embedding.flatten()
 
     # Get embeddings from database
-    ids, embeddings = get_embeddings_from_db(cursor)
+    ids, embeddings, frameIds = get_embeddings_from_db(cursor)
 
-    # Find similar faces using Faiss
-    similar_indices, distances = find_similar_faces_faiss(input_embedding, embeddings)
+    # Find similar faces using cosine similarity
+    similar_indices, similarities = find_similar_faces_cosine(input_embedding, embeddings)
 
     # Close cursor
     cursor.close()
 
     # Convert numpy.float32 to float
-    similar_faces = [(ids[idx], float(dist)) for idx, dist in zip(similar_indices[:k], distances[:k])]
+    similar_faces = [(ids[idx], float(sim)) for idx, sim in zip(similar_indices[:k], similarities[:k])]
 
     # Return top k similar faces
     return similar_faces
@@ -168,10 +215,10 @@ if __name__ == "__main__":
 
     #from db
     # Get embeddings from the database
-    ids, embeddings = get_embeddings_from_db(cursor)
+    ids, embeddings, frameIds = get_embeddings_from_db(cursor)
 
     # Find the most similar images using Faiss
-    similar_indices, distances = find_similar_faces_faiss(input_embedding, embeddings)
+    similar_indices, distances = find_similar_faces_cosine(input_embedding, embeddings)
 
     # Print results, the smaller the distance, the more similar
     for idx, dist in zip(similar_indices, distances):
