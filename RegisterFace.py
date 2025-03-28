@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import faiss
 from insightface.app import FaceAnalysis
+
+# List of face angles to captutre
 face_angles = {
     "front": False,
     "left": False,
@@ -18,24 +20,13 @@ def display_registered_angles(frame, face_angles):
     text = "Registered angles: " + ", ".join([angle for angle, registered in face_angles.items() if registered])
     cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-async def register_faceByFrame(frame, is_registering=True, app=None):
-    if not is_registering:
-        return  # Nếu đã dừng thì không xử lý tiếp
+def  register_faceByFrame(frame):
+    app = FaceAnalysis(providers=['CUDAExecutionProvider'])
+    app.prepare(ctx_id=0, det_size=(320, 320))
 
-    # Ensure the FaceAnalysis object is provided
-    if app is None:
-        raise ValueError("FaceAnalysis object must be provided")
-
-    # Check if frame is None before processing
-    if frame is None:
-        print("Warning: Frame is None, skipping processing")
-        return
-        
     faces = app.get(frame)
 
     for face in faces:
-        if not is_registering:  # Kiểm tra liên tục để thoát ngay lập tức
-            return
         embedding = face.normed_embedding 
         yaw, pitch, roll = face.pose  
         angle_detected = None

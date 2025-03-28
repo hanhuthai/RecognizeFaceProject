@@ -19,6 +19,8 @@ import os
 import cv2
 from RegisterFace import captured_images
 from fastapi.middleware.cors import CORSMiddleware
+from RegisterFace import face_angles, face_embeddings, captured_images
+import concurrent.futures
 # Set the logging level for the websockets library to WARNING
 logging.getLogger("websockets").setLevel(logging.WARNING)
 app = FastAPI()
@@ -29,8 +31,8 @@ app.add_middleware(
     allow_methods=["*"],  # Cho phép tất cả phương thức (GET, POST, OPTIONS, ...)
     allow_headers=["*"],  # Cho phép tất cả headers
 )
-is_registering = True  
-
+stop_event = asyncio.Event()
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 @app.get("/", response_class=HTMLResponse)
 async def home():
     with open("ui/RegisterFace.html", "r") as f:
@@ -43,41 +45,37 @@ def video_feed():
 
 @app.post("/register-face")
 async def api_register_face(background_tasks: BackgroundTasks):
-    global is_registering
-    if is_registering:
-        print("Registering face...")
-        background_tasks.add_task(register_face_async)
-        return {"status": "processing"}
+    """ Gọi register_face() and return to client """
+    stop_event.clear()
+    print("Registering face...")
+    background_tasks.add_task(register_face_async)
+    return {"status": "processing"}
 
-async def register_face_async():
-    global is_registering
-    # Initialize FaceAnalysis once outside the loop
-    app = rgf.FaceAnalysis(providers=['CUDAExecutionProvider'])
-    app.prepare(ctx_id=0, det_size=(320, 320))
+def register_face_async():
+    """Hàm xử lý đăng ký khuôn mặt"""
+    while not stop_event.is_set() and not all(face_angles.values()):
+        register_faceByFrame(vs.latest_frame)
+        print("Registering...")
 
-    while True:
-        if not is_registering:
-            print("Stopping registration process...")
-            break  # Exit the loop immediately when is_registering is False
-
-        # Check if latest_frame is None
-        if vs.latest_frame is not None:
-            await register_faceByFrame(vs.latest_frame, is_registering, app)
-        else:
-            print("Warning: No frame available")
-        await asyncio.sleep(0.1)
-    print("Registration process stopped.")
-
-def reset_is_registering():
-    global is_registering
-    is_registering = True  # Đặt lại sau khi API chạy xong        
+def reset_face_angles():
+    """Đặt tất cả các phần tử của face_angles về False"""
+    global face_angles, face_embeddings, captured_images
+    face_angles = {key: False for key in face_angles}
+    face_embeddings = {key: None for key in face_embeddings}
+    captured_images = {key: None for key in captured_images}
+    
 @app.post("/stop-register-face")
-async def api_stop_register_face(background_tasks: BackgroundTasks):
-    global is_registering
-    is_registering = False  # Tạm thời đặt thành False
-    background_tasks.add_task(reset_is_registering)  # Đặt lại True sau khi API kết thúc
+async def stop_register_face():
+    """API để dừng quá trình đăng ký và reset face_angles"""
+    reset_face_angles()
+    await stop_event.set()  # Dừng quá trình đăng ký
+      # Reset tất cả góc về False
+    print("Stopped face registration and reset face angles.")
     return {"status": "stopped"}
-
+def run_in_executor():
+    """Chạy đăng ký trong Thread Pool Executor"""
+    future = executor.submit(register_face_async)
+    return future.result()
 @app.post("/save-face")
 async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(FaceInformation.faceInfoId).order_by(FaceInformation.faceInfoId.desc()).limit(1))
@@ -155,7 +153,7 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
         )
     else:
         return Response(
-            content.json.dumps({"status": "error", "message": "Failed to save face data"}),
+            content=json.dumps({"status": "error", "message": "Failed to save face data"}),
             status_code=status.HTTP_400_BAD_REQUEST,
             media_type="application/json"
         )
@@ -168,4 +166,4 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     while True:
         await websocket.send_json(rgf.face_angles)
-        await asyncio.sleep(1)
+        await asyncio.sleep(1)  
