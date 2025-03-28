@@ -21,6 +21,9 @@ from RegisterFace import captured_images
 from fastapi.middleware.cors import CORSMiddleware
 from RegisterFace import face_angles, face_embeddings, captured_images
 import concurrent.futures
+import RegisterFace
+from starlette.websockets import WebSocketDisconnect
+
 # Set the logging level for the websockets library to WARNING
 logging.getLogger("websockets").setLevel(logging.WARNING)
 app = FastAPI()
@@ -57,19 +60,19 @@ def register_face_async():
         register_faceByFrame(vs.latest_frame)
         print("Registering...")
 
-def reset_face_angles():
+async def reset_face_angles():
     """Đặt tất cả các phần tử của face_angles về False"""
-    global face_angles, face_embeddings, captured_images
-    face_angles = {key: False for key in face_angles}
-    face_embeddings = {key: None for key in face_embeddings}
-    captured_images = {key: None for key in captured_images}
+    RegisterFace.face_angles = {key: False for key in face_angles}
+    RegisterFace.face_embeddings = {key: None for key in face_embeddings}
+    RegisterFace.captured_images = {key: None for key in captured_images}
+    print("Reset face angles and captured images.", face_angles)
     
 @app.post("/stop-register-face")
 async def stop_register_face():
     """API để dừng quá trình đăng ký và reset face_angles"""
-    reset_face_angles()
-    await stop_event.set()  # Dừng quá trình đăng ký
-      # Reset tất cả góc về False
+    stop_event.set()
+    await reset_face_angles()
+      # Dừng quá trình đăng ký
     print("Stopped face registration and reset face angles.")
     return {"status": "stopped"}
 def run_in_executor():
@@ -161,9 +164,20 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
 
     
    
+# @app.websocket("/ws")
+# async def websocket_endpoint(websocket: WebSocket):
+#     await websocket.accept()
+#     while True:
+#         await websocket.send_json(rgf.face_angles)
+#         await asyncio.sleep(1)  
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    while True:
-        await websocket.send_json(rgf.face_angles)
-        await asyncio.sleep(1)  
+    try:
+        while True:
+            await websocket.send_json(rgf.face_angles)
+            await asyncio.sleep(1)  
+    except WebSocketDisconnect:
+        print("Client disconnected")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
