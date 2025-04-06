@@ -81,6 +81,38 @@ def run_in_executor():
     return future.result()
 @app.post("/save-face")
 async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
+    # Validate email format
+    if not face_info.email.endswith("@gmail.com"):
+        return Response(
+            content=json.dumps({"status": "error", "message": "Email must be in the format '@gmail.com'."}),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json"
+        )
+
+    # Validate name is a string
+    if not face_info.firstName.isalpha() or not face_info.lastName.isalpha():
+        return Response(
+            json.dumps({"status": "error", "message": "Name must contain only alphabetic characters."}),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json"
+        )
+
+    # Validate empId is an integer
+    if not isinstance(face_info.empId, int):
+        return Response(
+            json.dumps({"status": "error", "message": "Employee ID must be an integer."}),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json"
+        )
+
+    # Validate phone is an integer and has 10 digits
+    if not isinstance(face_info.phone, int) or len(str(face_info.phone)) != 10:
+        return Response(
+            json.dumps({"status": "error", "message": "Phone number must be a 10-digit integer."}),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json"
+        )
+
     result = await db.execute(select(FaceInformation.faceInfoId).order_by(FaceInformation.faceInfoId.desc()).limit(1))
     last_face = result.scalar()
     new_id = (last_face + 1) if last_face else 1
@@ -133,6 +165,9 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
             cv2.imwrite(img_path, img)
             print(f"✅ Saved image: {img_path}")
 
+        # Reset face angles and captured images after successful save
+        await reset_face_angles()
+
         return Response(
             content=json.dumps({
                 "status": "success",
@@ -156,7 +191,7 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
         )
     else:
         return Response(
-            content=json.dumps({"status": "error", "message": "Failed to save face data"}),
+            json.dumps({"status": "error", "message": "Failed to save face data"}),
             status_code=status.HTTP_400_BAD_REQUEST,
             media_type="application/json"
         )
