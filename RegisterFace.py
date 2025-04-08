@@ -20,16 +20,21 @@ def display_registered_angles(frame, face_angles):
     text = "Registered angles: " + ", ".join([angle for angle, registered in face_angles.items() if registered])
     cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-def  register_faceByFrame(frame):
+def register_faceByFrame(frame):
     app = FaceAnalysis(providers=['CUDAExecutionProvider'])
     app.prepare(ctx_id=0, det_size=(320, 320))
 
     faces = app.get(frame)
 
     for face in faces:
-        embedding = face.normed_embedding 
-        yaw, pitch, roll = face.pose  
+        embedding = face.normed_embedding
+        yaw, pitch, roll = face.pose
         angle_detected = None
+
+        # Crop the face using the bounding box
+        x1, y1, x2, y2 = map(int, face.bbox)
+        cropped_face = frame[y1:y2, x1:x2]
+
         if -10 < yaw < 10 and -10 < pitch < 10 and not face_angles["front"]:
             label = "Front"
             face_angles["front"] = True
@@ -55,12 +60,13 @@ def  register_faceByFrame(frame):
             face_angles["right"] = True
             face_embeddings["right"] = embedding
             angle_detected = "right"
+
         if angle_detected:
             face_angles[angle_detected] = True
             face_embeddings[angle_detected] = embedding
 
-            # Lưu ảnh vào biến tạm
-            captured_images[angle_detected] = frame.copy()
+            # Save the cropped face instead of the entire frame
+            captured_images[angle_detected] = cropped_face
             print(f"✅ Captured {angle_detected} face angle")
 
     registered_angles = [angle for angle, registered in face_angles.items() if registered]

@@ -1,5 +1,6 @@
-# server.py
 import json
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, BackgroundTasks, Depends, Response, status
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,13 +18,15 @@ from sqlalchemy import text
 from models.face_groupinfo import FaceGroupInfo
 import os
 import cv2
-from RegisterFace import captured_images
 from fastapi.middleware.cors import CORSMiddleware
 from RegisterFace import face_angles, face_embeddings, captured_images
 import concurrent.futures
 import RegisterFace
 from starlette.websockets import WebSocketDisconnect
-
+import uvicorn
+import unicodedata  # Add this import for normalization
+import re  # Add this import for regex
+load_dotenv()
 # Set the logging level for the websockets library to WARNING
 logging.getLogger("websockets").setLevel(logging.WARNING)
 app = FastAPI()
@@ -98,7 +101,7 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
         )
 
     # Validate empId is an integer
-    if not isinstance(face_info.empId, int):
+    if not isinstance(face_info.empId, str):
         return Response(
             json.dumps({"status": "error", "message": "Employee ID must be an integer."}),
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -106,7 +109,7 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
         )
 
     # Validate phone is an integer and has 10 digits
-    if not isinstance(face_info.phone, int) or len(str(face_info.phone)) != 10:
+    if not isinstance(face_info.phone, str) or len(face_info.phone) != 10:
         return Response(
             json.dumps({"status": "error", "message": "Phone number must be a 10-digit integer."}),
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -148,22 +151,38 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
     ref_value = output_result.scalar()
 
     await db.commit()
-
+    face_database_path = os.getenv('FACE_DATABASE_PATH')
+    print(face_database_path)
     if ref_value == 1:
-        if len(captured_images) < 5:
+        if len(captured_images) < 4:
             return Response(
                 content=json.dumps({"status": "error", "message": "Not enough face angles captured. Please complete all 5 angles before saving."}),
                 status_code=status.HTTP_400_BAD_REQUEST,
                 media_type="application/json"
             )
         else:
-            save_dir = f"faces/{face_info.groupName}/{new_id}/{face_info.lastName}{face_info.firstName}"
+            normalized_last_name = normalize_filename(face_info.lastName)
+            normalized_first_name = normalize_filename(face_info.firstName)
+            normalized_group_name = normalize_filename(face_info.groupName)
+            normalized_group_name_ClusterA = "ClusterA"
+            normalized_dob = re.sub(r'\s+', '', face_info.dob)
+            concatenated_name_dob = f"{normalized_last_name}-{normalized_dob}"
+            save_dir = f"{face_database_path}/{normalized_group_name_ClusterA}/{new_id}"
             os.makedirs(save_dir, exist_ok=True)
+            save_dir_1 = f"{face_database_path}/{normalized_group_name}/{concatenated_name_dob}"
+            os.makedirs(save_dir_1, exist_ok=True)
 
         for angle, img in captured_images.items():
-            img_path = os.path.join(save_dir, f"{angle}.jpg")
-            cv2.imwrite(img_path, img)
-            print(f"✅ Saved image: {img_path}")
+            img_path = os.path.normpath(os.path.join(save_dir, f"{angle}.jpg"))
+            img_path1 = os.path.normpath(os.path.join(save_dir_1, f"{angle}.jpg"))
+
+            try:
+                if cv2.imwrite(img_path, img) and cv2.imwrite(img_path1, img):
+                    print(f"✅ Saved image: {img_path}")
+                else:
+                    print(f"❌ Failed to save image: {img_path}")
+            except cv2.error as e:
+                print(f"❌ Error saving image {img_path}: {e}")
 
         # Reset face angles and captured images after successful save
         await reset_face_angles()
@@ -196,15 +215,13 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
             media_type="application/json"
         )
 
+def normalize_filename(name):
+    """Normalize a string to remove diacritics, spaces, and invalid characters."""
+    name = unicodedata.normalize('NFD', name).encode('ascii', 'ignore').decode('utf-8')  # Remove diacritics
+    name = re.sub(r'\s+', '', name)  # Remove spaces
+    name = re.sub(r'[^\w.-]', '', name)  # Remove invalid characters
+    return name
 
-    
-   
-# @app.websocket("/ws")
-# async def websocket_endpoint(websocket: WebSocket):
-#     await websocket.accept()
-#     while True:
-#         await websocket.send_json(rgf.face_angles)
-#         await asyncio.sleep(1)  
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -216,3 +233,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print("Client disconnected")
     except Exception as e:
         print(f"Unexpected error: {e}")
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -2,7 +2,7 @@
 import cv2
 from RegisterFace import register_faceByFrame
 rtsp_url = 'rtsp://192.168.1.49:8551/profile2/media.smp'
-cap = cv2.VideoCapture(rtsp_url)
+cap = cv2.VideoCapture(0)
 frame_skip = 5  # Chỉ xử lý 1 frame trong mỗi 5 frame
 frame_count = 0
 latest_frame = None
