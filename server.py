@@ -1,9 +1,9 @@
 import json
-
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, BackgroundTasks, Depends, Response, status
+from fastapi import FastAPI, WebSocket, BackgroundTasks, Depends, Response, status, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 from RegisterFace import register_faceByFrame  # Import từ file registerFace.py
 from video_stream import generate_frames  # Import từ file video_stream.py
 import RegisterFace as rgf
@@ -26,6 +26,8 @@ from starlette.websockets import WebSocketDisconnect
 import uvicorn
 import unicodedata  # Add this import for normalization
 import re  # Add this import for regex
+import pickle
+
 load_dotenv()
 # Set the logging level for the websockets library to WARNING
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -100,36 +102,40 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
             media_type="application/json"
         )
 
-    # Validate empId is an integer
+    # Validate empId is a string
     if not isinstance(face_info.empId, str):
         return Response(
-            json.dumps({"status": "error", "message": "Employee ID must be an integer."}),
+            json.dumps({"status": "error", "message": "Employee ID must be a string."}),
             status_code=status.HTTP_400_BAD_REQUEST,
             media_type="application/json"
         )
 
-    # Validate phone is an integer and has 10 digits
-    if not isinstance(face_info.phone, str) or len(face_info.phone) != 10:
+    # Validate phone is a string of 10 digits
+    if not isinstance(face_info.phone, str) or len(face_info.phone) != 10 or not face_info.phone.isdigit():
         return Response(
-            json.dumps({"status": "error", "message": "Phone number must be a 10-digit integer."}),
+            json.dumps({"status": "error", "message": "Phone number must be a 10-digit string."}),
             status_code=status.HTTP_400_BAD_REQUEST,
             media_type="application/json"
         )
 
+    # Lấy ID mới
     result = await db.execute(select(FaceInformation.faceInfoId).order_by(FaceInformation.faceInfoId.desc()).limit(1))
     last_face = result.scalar()
     new_id = (last_face + 1) if last_face else 1
 
+    # Lấy groupId từ groupName
     group_result = await db.execute(select(FaceGroupInfo.id).where(FaceGroupInfo.groupName == face_info.groupName))
-    group_id = group_result.scalar() or 0  
+    group_id = group_result.scalar() or 0
 
+    # Gọi procedure để insert trước
     insert_sql = text(
         """
         CALL sp_insert_target(:id_, :empId, :firstName, :lastName, :groupId, :dob, 
                               :gender, :phone, :email, :avatar, @output);
         """
     )
-    
+
+    # Tạm thời truyền avatar rỗng (sẽ cập nhật sau)
     await db.execute(
         insert_sql,
         {
@@ -137,22 +143,21 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
             "empId": face_info.empId,
             "firstName": face_info.firstName,
             "lastName": face_info.lastName,
-            "groupId": group_id,  
+            "groupId": group_id,
             "dob": face_info.dob,
             "gender": face_info.gender,
             "phone": face_info.phone,
             "email": face_info.email,
-            "avatar": face_info.avatar
+            "avatar": ""
         }
     )
 
+    # Sau khi insert mới lấy output
     output_sql = text("SELECT @output AS refValue;")
     output_result = await db.execute(output_sql)
     ref_value = output_result.scalar()
 
-    await db.commit()
-    face_database_path = os.getenv('FACE_DATABASE_PATH')
-    print(face_database_path)
+    # Nếu thành công (ref_value == 1)
     if ref_value == 1:
         if len(captured_images) < 4:
             return Response(
@@ -160,18 +165,24 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 media_type="application/json"
             )
-        else:
-            normalized_last_name = normalize_filename(face_info.lastName)
-            normalized_first_name = normalize_filename(face_info.firstName)
-            normalized_group_name = normalize_filename(face_info.groupName)
-            normalized_group_name_ClusterA = "ClusterA"
-            normalized_dob = re.sub(r'\s+', '', face_info.dob)
-            concatenated_name_dob = f"{normalized_last_name}-{normalized_dob}"
-            save_dir = f"{face_database_path}/{normalized_group_name_ClusterA}/{new_id}"
-            os.makedirs(save_dir, exist_ok=True)
-            save_dir_1 = f"{face_database_path}/{normalized_group_name}/{concatenated_name_dob}"
-            os.makedirs(save_dir_1, exist_ok=True)
+        
+        # Chuẩn hóa tên thư mục
+        normalized_last_name = normalize_filename(face_info.lastName)
+        normalized_first_name = normalize_filename(face_info.firstName)
+        normalized_group_name = normalize_filename(face_info.groupName)
+        normalized_group_name_ClusterA = "ClusterA"
+        normalized_dob = re.sub(r'\s+', '', face_info.dob)
+        concatenated_name_dob = f"{normalized_first_name}{normalized_last_name}-{normalized_dob}"
 
+        # Tạo thư mục lưu ảnh
+        face_database_path = os.getenv('FACE_DATABASE_PATH')
+        save_dir = f"{face_database_path}/{normalized_group_name_ClusterA}/{new_id}"
+        os.makedirs(save_dir, exist_ok=True)
+        save_dir_1 = f"{face_database_path}/{normalized_group_name}/{concatenated_name_dob}"
+        os.makedirs(save_dir_1, exist_ok=True)
+
+        # Lưu ảnh và tạo đường dẫn avatar
+        image_paths = []
         for angle, img in captured_images.items():
             img_path = os.path.normpath(os.path.join(save_dir, f"{angle}.jpg"))
             img_path1 = os.path.normpath(os.path.join(save_dir_1, f"{angle}.jpg"))
@@ -179,12 +190,28 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
             try:
                 if cv2.imwrite(img_path, img) and cv2.imwrite(img_path1, img):
                     print(f"✅ Saved image: {img_path}")
+                    image_paths.append(img_path1)
                 else:
                     print(f"❌ Failed to save image: {img_path}")
             except cv2.error as e:
                 print(f"❌ Error saving image {img_path}: {e}")
 
-        # Reset face angles and captured images after successful save
+        avatar_paths = ",".join(image_paths)
+
+        # Cập nhật embedding và avatar
+        embedding_blob = pickle.dumps(face_embeddings)
+        await db.execute(
+            update(FaceInformation)
+            .where(FaceInformation.faceInfoId == new_id)
+            .values(
+                embedding=embedding_blob,
+                avatar=avatar_paths
+            )
+        )
+
+        await db.commit()
+
+        # Reset trạng thái ảnh
         await reset_face_angles()
 
         return Response(
@@ -202,18 +229,21 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
                     "gender": face_info.gender,
                     "phone": face_info.phone,
                     "email": face_info.email,
-                    "avatar": face_info.avatar
+                    "avatar": avatar_paths
                 }
             }),
             status_code=status.HTTP_201_CREATED,
             media_type="application/json"
         )
+
+    # Nếu không thành công
     else:
         return Response(
             json.dumps({"status": "error", "message": "Failed to save face data"}),
             status_code=status.HTTP_400_BAD_REQUEST,
             media_type="application/json"
         )
+
 
 def normalize_filename(name):
     """Normalize a string to remove diacritics, spaces, and invalid characters."""
@@ -234,6 +264,26 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Unexpected error: {e}")
 
+@app.get("/get-embedding/{face_id}")
+async def get_embedding(face_id: int, db: AsyncSession = Depends(get_db)):
+    """Retrieve the embedding stored in the database for a given face ID."""
+    result = await db.execute(select(FaceInformation.embedding).where(FaceInformation.faceInfoId == face_id))
+    embedding_blob = result.scalar()
+
+    if not embedding_blob:
+        raise HTTPException(status_code=404, detail="Embedding not found for this faceInfoId")
+
+    try:
+        embedding = pickle.loads(embedding_blob)
+        # Convert embedding to a JSON-serializable format (e.g., list)
+        embedding_serializable = {key: value.tolist() for key, value in embedding.items()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to deserialize embedding: {str(e)}")
+
+    return {
+        "faceInfoId": face_id,
+        "embedding": embedding_serializable
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

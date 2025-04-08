@@ -6,7 +6,7 @@ class FaceInfo(BaseModel):
     empId: str
     name: Optional[str] = ""
     firstName: Optional[str] = ""
-    lastName: Optional[str] = "0"  # Giá trị mặc định
+    lastName: Optional[str] = "0"
     groupId: Optional[int] = None
     groupName: Optional[str] = ""
     dob: Optional[str] = ""
@@ -14,7 +14,7 @@ class FaceInfo(BaseModel):
     phone: Optional[str] = ""
     email: Optional[str] = ""
     avatar: Optional[str] = ""
-    embedding: Optional[dict] = None
+    embedding: Optional[bytes] = None  # Dùng bytes thay vì dict
 
     class Config:
-        orm_mode = True  # Hỗ trợ convert từ SQLAlchemy Model
+        orm_mode = True
