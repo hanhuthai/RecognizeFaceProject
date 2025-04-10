@@ -16,62 +16,8 @@ def l2_distance(emb1, emb2):
 
 
 def load_model(model_path):
-    return ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
-
-def create_transformation_matrix(src_points, dst_points):
-    if len(src_points) != 5 or len(dst_points) != 5:
-        raise ValueError("Both src_points and dst_points must contain exactly 5 points")
-    src_points = np.array(src_points, dtype=np.float32)
-    dst_points = np.array(dst_points, dtype=np.float32)
-    return cv2.estimateAffinePartial2D(src_points, dst_points)[0]
-
-def preprocess_image(img, transfer_mat=None):
-    if img is None or not isinstance(img, np.ndarray) or len(img.shape) != 3 or img.shape[2] != 3:
-        raise ValueError("Invalid input image or not RGB")
-    if img.dtype != np.uint8 or img.min() < 0 or img.max() > 255:
-        raise ValueError("Image must be uint8 with values from 0-255")
-
-    face_size = (112, 112)
-    target_size = (128, 128)
-
-    # Align image if transfer_mat is provided
-    if transfer_mat is not None:
-        if transfer_mat.shape != (2, 3):
-            raise ValueError("transfer_mat must be a 2x3 matrix")
-        face_aligned = cv2.warpAffine(img, transfer_mat, face_size)
-        cv2.imwrite("face_aligned.jpg", face_aligned)
-        print(f"Face saved to face_aligned.jpg")
-    else:
-        face_aligned = img
-
-    # Resize image
-    if face_aligned.shape[:2] != face_size:
-        src = face_aligned
-        if src.shape[:2] != target_size:
-            scale = min(target_size[0] / src.shape[0], target_size[1] / src.shape[1])
-            new_w, new_h = int(src.shape[1] * scale), int(src.shape[0] * scale)
-            src = cv2.resize(src, (new_w, new_h))
-            top = (target_size[0] - new_h) // 2
-            bottom = target_size[0] - new_h - top
-            left = (target_size[1] - new_w) // 2
-            right = target_size[1] - new_w - left
-            src = cv2.copyMakeBorder(src, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
-            if src.shape[:2] != target_size:
-                src = cv2.resize(src, target_size)
-        a, b = (target_size[0] - face_size[0]) // 2, (target_size[0] - face_size[0]) // 2 + face_size[0]
-        cropped = src[a:b, a:b]
-    else:
-        cropped = face_aligned
-
-    # Convert color and flip
-    cropped = cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR)
-    flipped = cv2.flip(cropped, 1)
-
-    # Create blob
-    cropped_blob = cv2.dnn.blobFromImage(cropped, 1.0 / 255, face_size, (0, 0, 0), swapRB=False, crop=False)
-    flipped_blob = cv2.dnn.blobFromImage(flipped, 1.0 / 255, face_size, (0, 0, 0), swapRB=False, crop=False)
-
-    return cropped_blob, flipped_blob
+    return cv2.dnn.readNetFromONNX(model_path)
+#    return ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
 
 def crop_face(image):
     app = FaceAnalysis()
@@ -88,35 +34,63 @@ def crop_face(image):
     print(f"Face saved to face.jpg")
     return cropped_face, face.kps  # Return keypoints for alignment
 
-def extract_embedding(net, img, transfer_mat=None):
-    if not hasattr(net, 'get_inputs') or not hasattr(net, 'run'):
-        raise ValueError("Invalid model")
-
+def extract_embedding(net, img):
     try:
-        cropped_face, keypoints = crop_face(img)  # Crop the face before preprocessing
-        if transfer_mat is None:
-            # Define destination points for alignment
-            dst_points = [
-                [30.2946 + 8.0, 51.6963],
-                [65.5318 + 8.0, 51.5014],
-                [48.0252 + 8.0, 71.7366],
-                [33.5493 + 8.0, 92.3655],
-                [62.7299 + 8.0, 92.2041]
-            ]
-            transfer_mat = create_transformation_matrix(keypoints, dst_points)
-        transfer_mat= None
-        cropped_blob, flipped_blob = preprocess_image(cropped_face, transfer_mat)
-        input_name = net.get_inputs()[0].name
+        if img is None:
+            raise ValueError("Could not read image")
 
-        # Run inference
-        res1 = net.run(None, {input_name: cropped_blob})[0]
-        res2 = net.run(None, {input_name: flipped_blob})[0]
+        # Handle 112x112 images
+        if img.shape[0] == 112 and img.shape[1] == 112:
+            cropped = img.copy()
+        else:
+            src = img.copy()
 
-        # Aggregate embeddings (not normalized to match C++)
+            # Pad if height is less than 128
+            if src.shape[0] < 128:
+                top = (128 - src.shape[0]) // 2
+                bottom = 128 - src.shape[0] - top
+                src = cv2.copyMakeBorder(src, top, bottom, 0, 0,
+                                         cv2.BORDER_CONSTANT, (0, 0, 0))
+
+            # Pad if width is less than 128
+            if src.shape[1] < 128:
+                left = (128 - src.shape[1]) // 2
+                right = 128 - src.shape[1] - left
+                src = cv2.copyMakeBorder(src, 0, 0, left, right,
+                                         cv2.BORDER_CONSTANT, (0, 0, 0))
+
+            # Resize to 128x128
+            resized = cv2.resize(src, (128, 128))
+
+            #print("Resized image:", resized[:, :, 2])
+
+            # Crop center 112x112
+            a = (128 - 112) // 2
+            b = (128 - 112) // 2 + 112
+            cropped = resized[a:b, a:b]
+
+        # Flip image horizontally
+        flipped = cv2.flip(cropped, 1)
+        # Create blobs
+        cropped_blob = cv2.dnn.blobFromImage(cropped, scalefactor=1.0 / 255, size=(112, 112), mean=(0, 0, 0),
+                                             swapRB=False,
+                                             crop=False)
+        flipped_blob = cv2.dnn.blobFromImage(flipped, scalefactor=1.0 / 255, size=(112, 112), mean=(0, 0, 0),
+                                             swapRB=False,
+                                             crop=False)
+        # Forward pass
+        net.setInput(cropped_blob)
+        res1 = net.forward()
+
+        net.setInput(flipped_blob)
+        res2 = net.forward()
+
+        # Return sum of embeddings
         return res1 + res2
+
     except Exception as e:
-        print("Error extracting embedding:", e)
-        return np.zeros(512, dtype=np.float32)
+        print(f"Error extracting embedding: {e}")
+        return np.zeros((1, 512), dtype=np.float32)
 
 def get_embeddings_from_db(cursor):
     cursor.execute("SELECT faceObjId, embedding, frameId FROM face_object")
@@ -169,7 +143,9 @@ def search_similar_faces(image_path, k=3):
     # Read image
     img = cv2.imread(image_path)
 
-    input_embedding = extract_embedding(net, img)
+    cropped_face, keypoints = crop_face(img)
+
+    input_embedding = extract_embedding(net, cropped_face)
     input_embedding = input_embedding.flatten()
 
     # Get embeddings from database
@@ -201,7 +177,7 @@ if __name__ == "__main__":
     model_path = "ArcFace.onnx"
     image_path = "chinh-front.jpg"  # Path to cropped image
     #image_path= r"D:\ai-portal\frontend\static\media\eTheiaStorage\img\2 (5).jpg"  #thai
-    image_path =r"D:\ai-portal\frontend\static\media\eTheiaStorage\database\ClusterA\3\20230209-075224-837855.png"
+    image_path =r"D:\ai-portal\frontend\static\media\eTheiaStorage\img\thaifrontcokinh.jpg"
 
     # Load model
     net = load_model(model_path)
@@ -209,7 +185,10 @@ if __name__ == "__main__":
     # Read image
     img = cv2.imread(image_path)
 
-    input_embedding = extract_embedding(net, img)
+    #crop image if full face
+    cropped_face, keypoints = crop_face(img)
+
+    input_embedding = extract_embedding(net, cropped_face)
     input_embedding = input_embedding.flatten()
     print("Embedding-originl:", input_embedding)
 
