@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "mysql+aiomysql://root:1234@localhost:3307/ai_portal"  # Chuyển pymysql -> aiomysql
+DATABASE_URL = "mysql+aiomysql://root:1234@localhost:3307/portal"  # Chuyển pymysql -> aiomysql
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 
