@@ -2,6 +2,10 @@ import cv2
 import numpy as np
 import faiss
 from insightface.app import FaceAnalysis
+from alg.ExtractEbedding import extract_feature, init_model  # Import the extract_feature and init_model functions
+
+# Initialize the ONNX model globally
+init_model("path_to_model.onnx")  # Replace "path_to_model.onnx" with the actual model path
 
 # List of face angles to captutre
 face_angles = {
@@ -40,23 +44,20 @@ def register_faceByFrame(frame):
             angle_detected = "front"
         elif yaw < -20 and -10 < pitch < 10 and not face_angles["down"]:
             face_angles["down"] = True
-            #face_embeddings["down"] = embedding
             angle_detected = "down"
         elif yaw > 20 and -10 < pitch < 10 and not face_angles["up"]:
             face_angles["up"] = True
-            #face_embeddings["up"] = embedding
             angle_detected = "up"
         elif -10 < yaw < 10 and pitch > 15 and not face_angles["left"]:
             face_angles["left"] = True
-            #face_embeddings["left"] = embedding
             angle_detected = "left"
         elif -10 < yaw < 10 and pitch < -15 and not face_angles["right"]:
             face_angles["right"] = True
-            #face_embeddings["right"] = embedding
             angle_detected = "right"
 
         if angle_detected:
             cropped_face = frame[y1:y2, x1:x2]
+            face_embeddings[angle_detected] = extract_feature(cropped_face)  # Extract feature from the cropped face
             face_angles[angle_detected] = True
             #face_embeddings[angle_detected] = embedding
 
