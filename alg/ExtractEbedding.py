@@ -13,11 +13,12 @@ def init_model(model_path):
 def extract_feature(img):
     try:
         global onnx_model
+        print("[INFO] loading face detector...", onnx_model)
         if onnx_model is None:
             raise ValueError("Model is not initialized. Call init_model() first.")
 
         # Read image
-        img = cv2.imread(img)
+        # img = cv2.imread(img)
         if img is None:
             raise ValueError("Could not read image")
 

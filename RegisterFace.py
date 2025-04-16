@@ -5,7 +5,7 @@ from insightface.app import FaceAnalysis
 from alg.ExtractEbedding import extract_feature, init_model  # Import the extract_feature and init_model functions
 
 # Initialize the ONNX model globally
-init_model("path_to_model.onnx")  # Replace "path_to_model.onnx" with the actual model path
+init_model("D:\\workspaces\\AI_portal\\RecognizeFaceProject\\ArcFace.onnx")  # Replace "path_to_model.onnx" with the actual model path
 
 # List of face angles to captutre
 face_angles = {
@@ -58,6 +58,7 @@ def register_faceByFrame(frame):
         if angle_detected:
             cropped_face = frame[y1:y2, x1:x2]
             face_embeddings[angle_detected] = extract_feature(cropped_face)  # Extract feature from the cropped face
+            print(face_embeddings[angle_detected])
             face_angles[angle_detected] = True
             #face_embeddings[angle_detected] = embedding
 

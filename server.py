@@ -27,6 +27,7 @@ import uvicorn
 import unicodedata  # Add this import for normalization
 import re  # Add this import for regex
 import pickle
+from models.face import Face  # Import Face model at the top level
 
 load_dotenv()
 # Set the logging level for the websockets library to WARNING
@@ -191,6 +192,17 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
                 if cv2.imwrite(img_path, img) and cv2.imwrite(img_path1, img):
                     print(f"✅ Saved image: {img_path}")
                     image_paths.append(img_path1)
+                    
+                    # Save embedding to the Face table - fixed to avoid importing Face here
+                    if angle in face_embeddings and face_embeddings[angle] is not None:
+                        embedding_blob = pickle.dumps(face_embeddings[angle])
+                        new_face = Face(
+                            direction=angle,
+                            faceInfoId=new_id,
+                            embedding=embedding_blob
+                        )
+                        db.add(new_face)
+                        print(f"✅ Added face record for angle: {angle}")
                 else:
                     print(f"❌ Failed to save image: {img_path}")
             except cv2.error as e:
@@ -198,15 +210,11 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
 
         avatar_paths = ",".join(image_paths)
 
-        # Cập nhật embedding và avatar
-        embedding_blob = pickle.dumps(face_embeddings)
+        # Update avatar path in FaceInformation but don't store embedding
         await db.execute(
             update(FaceInformation)
             .where(FaceInformation.faceInfoId == new_id)
-            .values(
-                embedding=embedding_blob,
-                avatar=avatar_paths
-            )
+            .values(avatar=avatar_paths)
         )
 
         await db.commit()
@@ -266,23 +274,75 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/get-embedding/{face_id}")
 async def get_embedding(face_id: int, db: AsyncSession = Depends(get_db)):
-    """Retrieve the embedding stored in the database for a given face ID."""
-    result = await db.execute(select(FaceInformation.embedding).where(FaceInformation.faceInfoId == face_id))
-    embedding_blob = result.scalar()
+    """Retrieve the embeddings stored in the Face table for a given face info ID."""
+    # Query all faces associated with the face_id
+    result = await db.execute(
+        select(Face.direction, Face.embedding)
+        .where(Face.faceInfoId == face_id)
+    )
+    faces = result.all()
 
-    if not embedding_blob:
-        raise HTTPException(status_code=404, detail="Embedding not found for this faceInfoId")
+    if not faces:
+        raise HTTPException(status_code=404, detail=f"No face embeddings found for faceInfoId: {face_id}")
 
-    try:
-        embedding = pickle.loads(embedding_blob)
-        # Convert embedding to a JSON-serializable format (e.g., list)
-        embedding_serializable = {key: value.tolist() for key, value in embedding.items()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to deserialize embedding: {str(e)}")
+    embeddings = {}
+    
+    # Process each face embedding
+    for direction, embedding_blob in faces:
+        try:
+            if embedding_blob:
+                embedding = pickle.loads(embedding_blob)
+                # For numpy arrays, convert to list for JSON serialization
+                if hasattr(embedding, 'tolist'):
+                    embeddings[direction] = embedding.tolist()
+                else:
+                    embeddings[direction] = embedding
+        except Exception as e:
+            print(f"Error deserializing embedding for direction {direction}: {str(e)}")
+            continue
+
+    if not embeddings:
+        raise HTTPException(status_code=404, detail="Could not deserialize any embeddings")
 
     return {
         "faceInfoId": face_id,
-        "embedding": embedding_serializable
+        "embeddings": embeddings
+    }
+
+@app.get("/get-embedding-by-direction/{face_id}/{direction}")
+async def get_embedding_by_direction(face_id: int, direction: str, db: AsyncSession = Depends(get_db)):
+    """Retrieve a specific embedding from the Face table for a given face info ID and direction."""
+    # Query the specific face with the matching faceInfoId and direction
+    result = await db.execute(
+        select(Face.embedding)
+        .where(Face.faceInfoId == face_id)
+        .where(Face.direction == direction)
+    )
+    embedding_blob = result.scalar()
+
+    if not embedding_blob:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No face embedding found for faceInfoId: {face_id} and direction: {direction}"
+        )
+
+    try:
+        embedding = pickle.loads(embedding_blob)
+        # For numpy arrays, convert to list for JSON serialization
+        if hasattr(embedding, 'tolist'):
+            embedding_data = embedding.tolist()
+        else:
+            embedding_data = embedding
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error deserializing embedding: {str(e)}"
+        )
+
+    return {
+        "faceInfoId": face_id,
+        "direction": direction,
+        "embedding": embedding_data
     }
 
 if __name__ == "__main__":
