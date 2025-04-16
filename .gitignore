@@ -45,3 +45,4 @@ docker-compose.override.yml
 # OS-specific files
 .DS_Store
 Thumbs.db
+ArcFace.onnx
