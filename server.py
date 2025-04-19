@@ -28,6 +28,7 @@ import unicodedata  # Add this import for normalization
 import re  # Add this import for regex
 import pickle
 from models.face import Face  # Import Face model at the top level
+import numpy as np
 
 load_dotenv()
 # Set the logging level for the websockets library to WARNING
@@ -195,7 +196,14 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
                     
                     # Save embedding to the Face table - fixed to avoid importing Face here
                     if angle in face_embeddings and face_embeddings[angle] is not None:
-                        embedding_blob = pickle.dumps(face_embeddings[angle])
+                        embedding = face_embeddings[angle]
+                        # Ensure the embedding is exactly 2048 bytes
+                        embedding_blob = embedding.tobytes()
+                        if len(embedding_blob) > 2048:
+                            embedding_blob = embedding_blob[:2048]  # Truncate to 2048 bytes
+                        elif len(embedding_blob) < 2048:
+                            embedding_blob = embedding_blob.ljust(2048, b'\0')  # Pad with null bytes
+
                         new_face = Face(
                             direction=angle,
                             faceInfoId=new_id,
@@ -254,7 +262,6 @@ async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
 
 
 def normalize_filename(name):
-    """Normalize a string to remove diacritics, spaces, and invalid characters."""
     name = unicodedata.normalize('NFD', name).encode('ascii', 'ignore').decode('utf-8')  # Remove diacritics
     name = re.sub(r'\s+', '', name)  # Remove spaces
     name = re.sub(r'[^\w.-]', '', name)  # Remove invalid characters
@@ -327,12 +334,9 @@ async def get_embedding_by_direction(face_id: int, direction: str, db: AsyncSess
         )
 
     try:
-        embedding = pickle.loads(embedding_blob)
-        # For numpy arrays, convert to list for JSON serialization
-        if hasattr(embedding, 'tolist'):
-            embedding_data = embedding.tolist()
-        else:
-            embedding_data = embedding
+        # Deserialize the embedding
+        embedding = np.frombuffer(embedding_blob, dtype=np.float32)
+        embedding_data = embedding.tolist()  # Convert to list for JSON serialization
     except Exception as e:
         raise HTTPException(
             status_code=500, 
