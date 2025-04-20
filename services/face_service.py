@@ -11,7 +11,7 @@ from sqlalchemy.future import select
 from fastapi import HTTPException, Response, status
 import json
 
-from models.face import Face
+from models.face_registered import Face
 from models.face_information import FaceInformation
 from models.face_groupinfo import FaceGroupInfo
 from schemas.FaceInfo import FaceInfo
@@ -144,6 +144,7 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
                         new_face = Face(
                             direction=angle,
                             faceInfoId=new_id,
+                            name=face_info.name, 
                             embedding=embedding_blob
                         )
                         db.add(new_face)
