@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from models.face_information import Base  # Import Base from face_information module
 
-class Face(Base):
+class FaceRegistered(Base):
     __tablename__ = 'face_registered'
 
     id = Column(Integer, primary_key=True, autoincrement=True)

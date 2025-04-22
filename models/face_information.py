@@ -1,9 +1,8 @@
 from sqlalchemy import Column, Integer, String, TIMESTAMP, JSON, LargeBinary
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
-Base = declarative_base()
+from database import Base
 
 class FaceInformation(Base):
     __tablename__ = "face_information"
@@ -23,5 +22,4 @@ class FaceInformation(Base):
     createdAt = Column(TIMESTAMP, server_default=func.current_timestamp())  # Lấy timestamp hiện tại
     updatedAt = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
     embedding = Column(LargeBinary, nullable=True, default=None)
-    faces = relationship("Face", back_populates="face_information")
-
+    faces = relationship("FaceRegistered", back_populates="face_information")

@@ -11,14 +11,14 @@ from sqlalchemy.future import select
 from fastapi import HTTPException, Response, status
 import json
 
-from models.face_registered import Face
+from models.face_registered import FaceRegistered
 from models.face_information import FaceInformation
 from models.face_groupinfo import FaceGroupInfo
 from schemas.FaceInfo import FaceInfo
 import RegisterFace as rgf
 from RegisterFace import face_angles, face_embeddings, captured_images
 import video_stream as vs
-
+import time
 async def reset_face_angles():
     rgf.face_angles = {key: False for key in face_angles}
     rgf.face_embeddings = {key: None for key in face_embeddings}
@@ -44,12 +44,12 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
             media_type="application/json"
         )
 
-    if not face_info.firstName.isalpha() or not face_info.lastName.isalpha():
-        return Response(
-            json.dumps({"status": "error", "message": "Name must contain only alphabetic characters."}),
-            status_code=status.HTTP_400_BAD_REQUEST,
-            media_type="application/json"
-        )
+    # if not face_info.firstName.isalpha() or not face_info.lastName.isalpha():
+    #     return Response(
+    #         json.dumps({"status": "error", "message": "Name must contain only alphabetic characters."}),
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         media_type="application/json"
+    #     )
 
     if not isinstance(face_info.empId, str):
         return Response(
@@ -68,7 +68,7 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
     # Kết hợp firstName và lastName thành name
     face_info.name = f"{face_info.firstName} {face_info.lastName}"
 
-    result = await db.execute(select(FaceInformation.faceInfoId).order_by(FaceInformation.faceInfoId.desc()).limit(1))
+    result = await db.execute(select(FaceRegistered.faceInfoId).order_by(FaceRegistered.faceInfoId.desc()).limit(1))
     last_face = result.scalar()
     new_id = (last_face + 1) if last_face else 1
 
@@ -118,20 +118,25 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
         concatenated_name_dob = f"{normalized_first_name}{normalized_last_name}-{normalized_dob}"
 
         face_database_path = os.getenv('FACE_DATABASE_PATH')
-        save_dir = f"{face_database_path}/{normalized_group_name_ClusterA}/{new_id}"
-        os.makedirs(save_dir, exist_ok=True)
+        avartar_path = os.getenv('AVATAR_PATH')
+        # save_dir = f"{face_database_path}/{normalized_group_name_ClusterA}/{new_id}"
+        # os.makedirs(save_dir, exist_ok=True)
         save_dir_1 = f"{face_database_path}/{normalized_group_name}/{concatenated_name_dob}"
+        save_dir_2 = f"{avartar_path}/{normalized_group_name}/{concatenated_name_dob}"
         os.makedirs(save_dir_1, exist_ok=True)
 
         image_paths = []
+        avartar_paths = []
         for angle, img in captured_images.items():
-            img_path = os.path.normpath(os.path.join(save_dir, f"{angle}.jpg"))
-            img_path1 = os.path.normpath(os.path.join(save_dir_1, f"{angle}.jpg"))
+            # img_path = os.path.normpath(os.path.join(save_dir, f"{angle}.jpg"))
+            img_path1 = os.path.normpath(os.path.join(save_dir_1, f"{angle}_{new_id}_{time.time()}.jpg"))
+            img_path2 = os.path.normpath(os.path.join(save_dir_2, f"{angle}_{new_id}_{time.time()}.jpg"))
 
             try:
-                if cv2.imwrite(img_path, img) and cv2.imwrite(img_path1, img):
-                    print(f"✅ Saved image: {img_path}")
+                if cv2.imwrite(img_path1, img):
+                    print(f"✅ Saved image: {img_path1}")
                     image_paths.append(img_path1)
+                    avartar_paths.append(img_path1)
                     
                     if angle in face_embeddings and face_embeddings[angle] is not None:
                         embedding = face_embeddings[angle]
@@ -141,18 +146,18 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
                         elif len(embedding_blob) < 2048:
                             embedding_blob = embedding_blob.ljust(2048, b'\0')
 
-                        new_face = Face(
+                        new_face = FaceRegistered(
                             direction=angle,
                             faceInfoId=new_id,
-                            name=face_info.name, 
-                            embedding=embedding_blob
+                            embedding=embedding_blob,
+                            userName=f"{face_info.firstName} {face_info.lastName}"
                         )
                         db.add(new_face)
                         print(f"✅ Added face record for angle: {angle}")
                 else:
-                    print(f"❌ Failed to save image: {img_path}")
+                    print(f"❌ Failed to save image: {img_path1}")
             except cv2.error as e:
-                print(f"❌ Error saving image {img_path}: {e}")
+                print(f"❌ Error saving image {img_path1}: {e}")
 
         avatar_paths = ",".join(image_paths)
 
@@ -162,7 +167,6 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
             .where(FaceInformation.faceInfoId == new_id)
             .values(
                 avatar=avatar_paths,
-                name=face_info.name
             )
         )
 
@@ -202,8 +206,8 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
 
 async def get_face_embedding(face_id: int, db: AsyncSession):
     result = await db.execute(
-        select(Face.direction, Face.embedding)
-        .where(Face.faceInfoId == face_id)
+        select(FaceRegistered.direction, FaceRegistered.embedding)
+        .where(FaceRegistered.faceInfoId == face_id)
     )
     faces = result.all()
 
@@ -234,9 +238,9 @@ async def get_face_embedding(face_id: int, db: AsyncSession):
 
 async def get_face_embedding_by_direction(face_id: int, direction: str, db: AsyncSession):
     result = await db.execute(
-        select(Face.embedding)
-        .where(Face.faceInfoId == face_id)
-        .where(Face.direction == direction)
+        select(FaceRegistered.embedding)
+        .where(FaceRegistered.faceInfoId == face_id)
+        .where(FaceRegistered.direction == direction)
     )
     embedding_blob = result.scalar()
 

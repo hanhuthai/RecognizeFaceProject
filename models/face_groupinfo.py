@@ -1,7 +1,5 @@
 from sqlalchemy import Column, Integer, String, TIMESTAMP, text
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
+from database import Base
 
 class FaceGroupInfo(Base):
     __tablename__ = "face_group_info"
