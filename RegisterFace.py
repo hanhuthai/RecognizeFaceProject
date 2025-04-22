@@ -3,8 +3,12 @@ import numpy as np
 import faiss
 from insightface.app import FaceAnalysis
 from alg.ExtractEbedding import extract_feature, init_model
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-init_model("D:\\workspaces\\AI_portal\\RecognizeFaceProject\\ArcFace.onnx")
+faceModel = os.getenv('FACE_MODEL_PATH')
+init_model(faceModel)
 
 face_angles = {
     "front": False,

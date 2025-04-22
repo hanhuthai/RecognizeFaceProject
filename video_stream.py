@@ -1,5 +1,8 @@
 import cv2
 from RegisterFace import register_faceByFrame
+from dotenv import load_dotenv
+load_dotenv()
+
 rtsp_url = 'rtsp://192.168.1.49:8551/profile2/media.smp'
 cap = cv2.VideoCapture(0)
 frame_skip = 5

@@ -2,5 +2,6 @@
 pip install insightface opencv-python onnxruntime-gpu
 pip install numpy==1.26.4
 conda install -c conda-forge faiss-gpu
+npm install dotenv
 # for web
 pip install fastapi uvicorn websockets

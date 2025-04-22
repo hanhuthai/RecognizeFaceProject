@@ -31,7 +31,7 @@ async def register_face(background_tasks: BackgroundTasks):
     background_tasks.add_task(register_face_async, stop_event)
     return {"status": "processing", "message": "Face registration started"}
 
-@router.post("/stop-register")
+@router.post("/stop-register-face")
 async def stop_register_face():
     stop_event.set()
     await reset_face_angles()
