@@ -19,16 +19,46 @@ import RegisterFace as rgf
 from RegisterFace import face_angles, face_embeddings, captured_images
 import video_stream as vs
 import time
+
 async def reset_face_angles():
-    rgf.face_angles = {key: False for key in face_angles}
-    rgf.face_embeddings = {key: None for key in face_embeddings}
-    rgf.captured_images = {key: None for key in captured_images}
-    print("Reset face angles and captured images.", face_angles)
+    # Reset trực tiếp các biến trong module RegisterFace
+    for key in rgf.face_angles:
+        rgf.face_angles[key] = False
+        
+    # Clear các dictionary
+    rgf.face_embeddings.clear()
+    rgf.captured_images.clear()
+    
+    # Khởi tạo lại các dictionary với các key ban đầu
+    for key in rgf.face_angles:
+        rgf.face_embeddings[key] = None
+        rgf.captured_images[key] = None
+        
+    print("Reset face angles and captured images successfully:", rgf.face_angles)
 
 def register_face_async(stop_event):
+    print("Started register_face_async with new stop_event")
     while not stop_event.is_set() and not all(face_angles.values()):
-        rgf.register_faceByFrame(vs.latest_frame)
-        print("Registering...")
+        if vs.latest_frame is None:
+            print("No frame available yet, waiting...")
+            time.sleep(0.1)
+            continue
+            
+        # Kiểm tra frame có hợp lệ không
+        if vs.latest_frame.size == 0:
+            print("Empty frame, waiting...")
+            time.sleep(0.1)
+            continue
+            
+        try:
+            rgf.register_faceByFrame(vs.latest_frame)
+            print("Registering...", face_angles)
+            time.sleep(0.1)  # Thêm một chút chờ để tránh CPU quá tải
+        except Exception as e:
+            print(f"Error in register_faceByFrame: {e}")
+            time.sleep(0.1)
+    
+    print("Finished register_face_async. Stop event:", stop_event.is_set(), "All angles:", all(face_angles.values()))
 
 def normalize_filename(name):
     name = unicodedata.normalize('NFD', name).encode('ascii', 'ignore').decode('utf-8')
@@ -122,7 +152,8 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
         # save_dir = f"{face_database_path}/{normalized_group_name_ClusterA}/{new_id}"
         # os.makedirs(save_dir, exist_ok=True)
         save_dir_1 = f"{face_database_path}/{normalized_group_name}/{concatenated_name_dob}"
-        save_dir_2 = f"{avartar_path}/{normalized_group_name}/{concatenated_name_dob}"
+        save_dir_2 = os.path.join(avartar_path, normalized_group_name, concatenated_name_dob)
+        print(save_dir_2)
         os.makedirs(save_dir_1, exist_ok=True)
 
         image_paths = []
@@ -131,12 +162,14 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
             # img_path = os.path.normpath(os.path.join(save_dir, f"{angle}.jpg"))
             img_path1 = os.path.normpath(os.path.join(save_dir_1, f"{angle}_{new_id}_{time.time()}.jpg"))
             img_path2 = os.path.normpath(os.path.join(save_dir_2, f"{angle}_{new_id}_{time.time()}.jpg"))
+            print(img_path2)
 
             try:
                 if cv2.imwrite(img_path1, img):
                     print(f"✅ Saved image: {img_path1}")
                     image_paths.append(img_path1)
-                    avartar_paths.append(img_path1)
+                    avartar_paths.append(img_path2)
+                    print(avartar_path)
                     
                     if angle in face_embeddings and face_embeddings[angle] is not None:
                         embedding = face_embeddings[angle]
@@ -159,7 +192,7 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
             except cv2.error as e:
                 print(f"❌ Error saving image {img_path1}: {e}")
 
-        avatar_paths = ",".join(image_paths)
+        avatar_paths = ",".join(avartar_paths)
 
         # Cập nhật cả avatar và name trong bảng FaceInformation
         await db.execute(

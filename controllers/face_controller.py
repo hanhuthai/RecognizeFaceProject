@@ -34,12 +34,14 @@ async def register_face(background_tasks: BackgroundTasks):
 @router.post("/stop-register-face")
 async def stop_register_face():
     stop_event.set()
+    print("Stopping face registration...", stop_event)
     await reset_face_angles()
     print("Stopped face registration and reset face angles.")
     return {"status": "stopped"}
 
 @router.post("/save-face")
 async def save_face(face_info: FaceInfo, db: AsyncSession = Depends(get_db)):
+    stop_event.set()
     return await save_face_info(face_info, db)
 
 @router.get("/embedding/{face_id}")
