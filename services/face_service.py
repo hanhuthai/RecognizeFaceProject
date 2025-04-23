@@ -153,6 +153,7 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
         # os.makedirs(save_dir, exist_ok=True)
         save_dir_1 = f"{face_database_path}/{normalized_group_name}/{concatenated_name_dob}"
         save_dir_2 = os.path.join(avartar_path, normalized_group_name, concatenated_name_dob)
+
         print(save_dir_2)
         os.makedirs(save_dir_1, exist_ok=True)
 
@@ -162,6 +163,7 @@ async def save_face_info(face_info: FaceInfo, db: AsyncSession):
             # img_path = os.path.normpath(os.path.join(save_dir, f"{angle}.jpg"))
             img_path1 = os.path.normpath(os.path.join(save_dir_1, f"{angle}_{new_id}_{time.time()}.jpg"))
             img_path2 = os.path.normpath(os.path.join(save_dir_2, f"{angle}_{new_id}_{time.time()}.jpg"))
+            img_path2 = img_path2.replace("\\", "/")
             print(img_path2)
 
             try:
